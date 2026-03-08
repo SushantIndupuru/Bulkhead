@@ -9,6 +9,10 @@ constexpr uint8_t HEADLIGHT = 8;
 constexpr uint8_t RUNNING = 11;
 constexpr uint8_t REAR_LEFT_BRAKE_LIGHT = 6;
 constexpr uint8_t REAR_RIGHT_BRAKE_LIGHT = 7;
+constexpr uint8_t BRAKE_PEDAL_SENSOR = A0;
+
+constexpr unsigned long INDICATOR_INTERVAL = 350;
+constexpr unsigned long FORWARD_PACKET_INTERVAL = 50; // ~20Hz
 
 const uint8_t pins[] = {
     LEFT_INDICATOR,
@@ -23,9 +27,8 @@ IndicatorState currentIndicatorState = INDICATOR_OFF;
 
 bool indicatorBlinkState = false;
 unsigned long lastIndicatorToggle = 0;
-constexpr unsigned long INDICATOR_INTERVAL = 350;
-bool leftBrakeLight = false;
-bool rightBrakeLight = false;
+
+bool brakeRequested = false;
 
 ReversePacket latestReversePacket{};
 
@@ -40,25 +43,25 @@ uint8_t getSpeed() {
 }
 
 float getVoltage() {
-    return 0;
+    return analogRead(BRAKE_PEDAL_SENSOR) / 1024.0f; // TODO: replace with actual formula
 }
 
 void setHeadLights(bool state) {
     digitalWrite(HEADLIGHT, state);
 }
 
+void setRunningLights(bool state) {
+    digitalWrite(RUNNING, state);
+}
+
+void setBrakeLights(bool state) {
+    brakeRequested = state;
+}
+
 void setIndicatorLights(IndicatorState state) {
     currentIndicatorState = state;
 }
 
-void setBrakeLights(bool state) {
-    leftBrakeLight = state;
-    rightBrakeLight = state;
-}
-
-void setRunningLights(bool state) {
-    digitalWrite(RUNNING, state);
-}
 
 void updateIndicators() {
     unsigned long now = millis();
@@ -72,28 +75,29 @@ void updateIndicators() {
         case INDICATOR_OFF:
             digitalWrite(LEFT_INDICATOR, LOW);
             digitalWrite(RIGHT_INDICATOR, LOW);
+            digitalWrite(REAR_LEFT_BRAKE_LIGHT, brakeRequested);
+            digitalWrite(REAR_RIGHT_BRAKE_LIGHT, brakeRequested);
             break;
 
         case LEFT:
             digitalWrite(LEFT_INDICATOR, indicatorBlinkState);
             digitalWrite(RIGHT_INDICATOR, LOW);
-
-            leftBrakeLight = indicatorBlinkState;
+            digitalWrite(REAR_LEFT_BRAKE_LIGHT, indicatorBlinkState);
+            digitalWrite(REAR_RIGHT_BRAKE_LIGHT, brakeRequested);
             break;
 
         case RIGHT:
-            digitalWrite(RIGHT_INDICATOR, indicatorBlinkState);
             digitalWrite(LEFT_INDICATOR, LOW);
-
-            rightBrakeLight = indicatorBlinkState;
+            digitalWrite(RIGHT_INDICATOR, indicatorBlinkState);
+            digitalWrite(REAR_LEFT_BRAKE_LIGHT, brakeRequested);
+            digitalWrite(REAR_RIGHT_BRAKE_LIGHT, indicatorBlinkState);
             break;
 
         case HAZARDS:
             digitalWrite(LEFT_INDICATOR, indicatorBlinkState);
             digitalWrite(RIGHT_INDICATOR, indicatorBlinkState);
-
-            leftBrakeLight = indicatorBlinkState;
-            rightBrakeLight = indicatorBlinkState;
+            digitalWrite(REAR_LEFT_BRAKE_LIGHT, indicatorBlinkState);
+            digitalWrite(REAR_RIGHT_BRAKE_LIGHT, indicatorBlinkState);
             break;
     }
 }
@@ -104,7 +108,7 @@ void setup() {
         pinMode(pin, OUTPUT);
         digitalWrite(pin, LOW);
     }
-    //test leds
+    // Test LEDs sequentially on boot
     for (const uint8_t pin: pins) {
         digitalWrite(pin, HIGH);
         delay(300);
@@ -117,13 +121,16 @@ void loop() {
     updatePacket(Serial, handlePacket);
 
     setHeadLights(latestReversePacket.headlight);
-    setBrakeLights(latestReversePacket.brake);
     setRunningLights(latestReversePacket.running);
+    setBrakeLights(latestReversePacket.brake);
     setIndicatorLights(latestReversePacket.indicatorState);
     updateIndicators();
-    digitalWrite(REAR_LEFT_BRAKE_LIGHT, leftBrakeLight);
-    digitalWrite(REAR_RIGHT_BRAKE_LIGHT, rightBrakeLight);
 
-    ForwardPacket packet = {getSpeed(), encodeNumberToFixed(getVoltage())};
-    sendPacket(Serial, 1, reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
+    static unsigned long lastForwardSend = 0;
+    unsigned long now = millis();
+    if (now - lastForwardSend >= FORWARD_PACKET_INTERVAL) {
+        lastForwardSend = now;
+        ForwardPacket packet = {getSpeed(), encodeNumberToFixed(getVoltage())};
+        sendPacket(Serial, 1, reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
+    }
 }

@@ -1,10 +1,83 @@
+#include <Arduino.h>
 #include "./SerialPacketFunctions.h"
 
-static enum { WAIT_START, READ_LEN, READ_TYPE, READ_DATA, READ_CHECK } state = WAIT_START;
-static uint8_t length, type, data[PACKET_MAX], index, checksum;
+constexpr size_t HISTORY_SIZE = 128;
+
+static uint8_t history[HISTORY_SIZE];
+static size_t historyLen = 0;
+
+void updatePacket(HardwareSerial &serial, void (*handler)(uint8_t type, uint8_t *data, uint8_t len)) {
+    while (serial.available() && historyLen < HISTORY_SIZE) {
+        history[historyLen++] = serial.read();
+    }
+
+    if (historyLen < 4) return;
+
+    bool found = false;
+    size_t lastPacketEnd = 0;
+    uint8_t latestType = 0;
+    uint8_t latestData[PACKET_MAX];
+    uint8_t latestLen = 0;
+
+    size_t i = 0;
+    while (i + 3 <= historyLen) {
+        if (history[i] != PACKET_START) {
+            i++;
+            continue;
+        }
+
+        uint8_t packetLen = history[i + 1];
+        if (packetLen > PACKET_MAX) {
+            i++;
+            continue;
+        }
+
+        if (i + 3 + packetLen + 1 > historyLen) break; // incomplete packet
+
+        uint8_t packetType = history[i + 2];
+        uint8_t *packetData = &history[i + 3];
+        uint8_t packetChecksum = history[i + 3 + packetLen];
+
+        uint8_t cs = packetLen ^ packetType;
+        for (uint8_t j = 0; j < packetLen; j++) cs ^= packetData[j];
+
+        if (cs == packetChecksum) {
+            found = true;
+            lastPacketEnd = i + 3 + packetLen + 1;
+            latestType = packetType;
+            latestLen = packetLen;
+            memcpy(latestData, packetData, latestLen);
+        }
+
+        i += 3 + packetLen + 1;
+    }
+
+    if (found) {
+        if (lastPacketEnd < historyLen) {
+            memmove(history, history + lastPacketEnd, historyLen - lastPacketEnd);
+            historyLen -= lastPacketEnd;
+        } else {
+            historyLen = 0;
+        }
+
+        if (handler) handler(latestType, latestData, latestLen);
+    } else {
+        size_t start = 0;
+        while (start < historyLen && history[start] != PACKET_START) start++;
+        if (start > 0) {
+            memmove(history, history + start, historyLen - start);
+            historyLen -= start;
+        }
+
+        if (historyLen == HISTORY_SIZE) {
+            memmove(history, history + 1, HISTORY_SIZE - 1);
+            historyLen--;
+        }
+    }
+}
 
 void sendPacket(HardwareSerial &serial, uint8_t type, uint8_t *payload, uint8_t len) {
-    uint8_t cs = type ^ len;
+    uint8_t cs = len ^ type;
     serial.write(PACKET_START);
     serial.write(len);
     serial.write(type);
@@ -13,34 +86,4 @@ void sendPacket(HardwareSerial &serial, uint8_t type, uint8_t *payload, uint8_t 
         cs ^= payload[i];
     }
     serial.write(cs);
-}
-
-void updatePacket(HardwareSerial &serial, void (*handler)(uint8_t type, uint8_t *data, uint8_t len)) {
-    while (serial.available()) {
-        uint8_t b = serial.read();
-        switch(state) {
-            case WAIT_START:
-                if (b == PACKET_START) { state = READ_LEN; checksum = 0; }
-                break;
-            case READ_LEN:
-                length = b;
-                if (length > PACKET_MAX) state = WAIT_START;
-                else { checksum ^= b; index = 0; state = READ_TYPE; }
-                break;
-            case READ_TYPE:
-                type = b;
-                checksum ^= b;
-                state = READ_DATA;
-                break;
-            case READ_DATA:
-                data[index++] = b;
-                checksum ^= b;
-                if (index >= length) state = READ_CHECK;
-                break;
-            case READ_CHECK:
-                if (checksum == b && handler) handler(type, data, length);
-                state = WAIT_START;
-                break;
-        }
-    }
 }
