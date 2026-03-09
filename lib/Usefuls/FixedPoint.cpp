@@ -9,6 +9,6 @@ uint16_t encodeNumberToFixed(float num) {
 
 
 float decodeFixedToNumber(uint16_t encoded) {
-    return encoded / 100.0f;
+    return encoded * 0.01f;
 }
 
