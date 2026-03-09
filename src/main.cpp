@@ -15,6 +15,9 @@ constexpr float WHEEL_DIAMETER_METERS = 0.3f;  //TODO: measure actual wheel
 constexpr int THRESHOLD_HIGH = 600; //TODO: tune
 constexpr int THRESHOLD_LOW  = 400;
 
+constexpr float POSITIVE_RESISTOR = 1500.0f;
+constexpr float NEGATIVE_RESISTOR = 1000.0f;
+
 constexpr unsigned long INDICATOR_INTERVAL = 350;
 constexpr unsigned long FORWARD_PACKET_INTERVAL = 50; // ~20Hz
 
@@ -71,8 +74,21 @@ uint8_t getSpeed() {
     return min(mph, (uint8_t)255);
 }
 
+float readVCC() {
+    //measure actual supply voltage using internal 1.1V reference
+    ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+    delay(2);
+    ADCSRA |= _BV(ADSC);
+    while (bit_is_set(ADCSRA, ADSC)) {}
+    long result = ADCW;
+    return (1.1f * 1023.0f * 1000.0f) / static_cast<float>(result) / 1000.0f;
+}
+
 float getVoltage() {
-    return analogRead(SPED_SENSOR) / 1024.0f; // TODO: replace with actual formula
+    const float vcc = readVCC();
+    const int raw = analogRead(SPED_SENSOR);
+    const float voltageAtPin = raw * (vcc / 1023);
+    return voltageAtPin * ((POSITIVE_RESISTOR + NEGATIVE_RESISTOR) / NEGATIVE_RESISTOR);
 }
 
 void setHeadLights(bool state) {
