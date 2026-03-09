@@ -9,12 +9,16 @@ constexpr uint8_t HEADLIGHT = 8;
 constexpr uint8_t RUNNING = 11;
 constexpr uint8_t REAR_LEFT_BRAKE_LIGHT = 6;
 constexpr uint8_t REAR_RIGHT_BRAKE_LIGHT = 7;
-constexpr uint8_t BRAKE_PEDAL_SENSOR = A0;
+constexpr uint8_t SPED_SENSOR = A0;
+
+constexpr float WHEEL_DIAMETER_METERS = 0.3f;  //TODO: measure actual wheel
+constexpr int THRESHOLD_HIGH = 600; //TODO: tune
+constexpr int THRESHOLD_LOW  = 400;
 
 constexpr unsigned long INDICATOR_INTERVAL = 350;
 constexpr unsigned long FORWARD_PACKET_INTERVAL = 50; // ~20Hz
 
-const uint8_t pins[] = {
+constexpr uint8_t pins[] = {
     LEFT_INDICATOR,
     RIGHT_INDICATOR,
     HEADLIGHT,
@@ -22,6 +26,10 @@ const uint8_t pins[] = {
     REAR_LEFT_BRAKE_LIGHT,
     REAR_RIGHT_BRAKE_LIGHT
 };
+
+bool sensorLastState = false;
+unsigned long lastRiseTime = 0;
+unsigned long pulseInterval = 0;
 
 IndicatorState currentIndicatorState = INDICATOR_OFF;
 
@@ -38,12 +46,33 @@ void handlePacket(uint8_t type, uint8_t *data, uint8_t len) {
     }
 }
 
+void updateSpeedSensor() {
+    const int val = analogRead(SPED_SENSOR);
+    bool currentState = sensorLastState;
+
+    if (!sensorLastState && val > THRESHOLD_HIGH) currentState = true;
+    else if (sensorLastState && val < THRESHOLD_LOW) currentState = false;
+
+    if (currentState && !sensorLastState) {
+        unsigned long now = micros();
+        if (lastRiseTime > 0) pulseInterval = now - lastRiseTime;
+        lastRiseTime = now;
+    }
+    sensorLastState = currentState;
+}
+
 uint8_t getSpeed() {
-    return 0;
+    if (pulseInterval == 0) return 0;
+    if (micros() - lastRiseTime > 2000000UL) return 0;
+
+    const float rpm = (60.0f * 1000000.0f) / static_cast<float>(pulseInterval);
+    const float ms  = (rpm / 60.0f) * (PI * WHEEL_DIAMETER_METERS);
+    const auto mph = static_cast<uint8_t>(ms * 2.237f);
+    return min(mph, (uint8_t)255);
 }
 
 float getVoltage() {
-    return analogRead(BRAKE_PEDAL_SENSOR) / 1024.0f; // TODO: replace with actual formula
+    return analogRead(SPED_SENSOR) / 1024.0f; // TODO: replace with actual formula
 }
 
 void setHeadLights(bool state) {
@@ -125,6 +154,7 @@ void loop() {
     setBrakeLights(latestReversePacket.brake);
     setIndicatorLights(latestReversePacket.indicatorState);
     updateIndicators();
+    updateSpeedSensor();
 
     static unsigned long lastForwardSend = 0;
     unsigned long now = millis();

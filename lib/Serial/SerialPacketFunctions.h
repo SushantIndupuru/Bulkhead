@@ -7,7 +7,7 @@
 #define PACKET_MAX 16
 
 // Function to send a packet
-void sendPacket(HardwareSerial &serial, uint8_t type, uint8_t *data, uint8_t len);
+void sendPacket(HardwareSerial &serial, uint8_t type, const uint8_t *data, uint8_t len);
 
 // Call this in loop() to read incoming bytes
 void updatePacket(HardwareSerial &serial, void (*handler)(uint8_t type, uint8_t *data, uint8_t len));

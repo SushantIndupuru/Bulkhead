@@ -26,7 +26,7 @@ void updatePacket(HardwareSerial &serial, void (*handler)(uint8_t type, uint8_t 
             continue;
         }
 
-        uint8_t packetLen = history[i + 1];
+        const uint8_t packetLen = history[i + 1];
         if (packetLen > PACKET_MAX) {
             i++;
             continue;
@@ -34,9 +34,9 @@ void updatePacket(HardwareSerial &serial, void (*handler)(uint8_t type, uint8_t 
 
         if (i + 3 + packetLen + 1 > historyLen) break; // incomplete packet
 
-        uint8_t packetType = history[i + 2];
-        uint8_t *packetData = &history[i + 3];
-        uint8_t packetChecksum = history[i + 3 + packetLen];
+        const uint8_t packetType = history[i + 2];
+        const uint8_t *packetData = &history[i + 3];
+        const uint8_t packetChecksum = history[i + 3 + packetLen];
 
         uint8_t cs = packetLen ^ packetType;
         for (uint8_t j = 0; j < packetLen; j++) cs ^= packetData[j];
@@ -76,14 +76,14 @@ void updatePacket(HardwareSerial &serial, void (*handler)(uint8_t type, uint8_t 
     }
 }
 
-void sendPacket(HardwareSerial &serial, uint8_t type, uint8_t *payload, uint8_t len) {
+void sendPacket(HardwareSerial &serial, const uint8_t type, const uint8_t *data, const uint8_t len) {
     uint8_t cs = len ^ type;
     serial.write(PACKET_START);
     serial.write(len);
     serial.write(type);
     for (uint8_t i = 0; i < len; i++) {
-        serial.write(payload[i]);
-        cs ^= payload[i];
+        serial.write(data[i]);
+        cs ^= data[i];
     }
     serial.write(cs);
 }
