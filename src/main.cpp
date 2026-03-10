@@ -1,3 +1,4 @@
+
 #include <Arduino.h>
 #include <SerialPacketFunctions.h>
 #include <Structs.h>
@@ -12,8 +13,8 @@ constexpr uint8_t REAR_RIGHT_BRAKE_LIGHT = 7;
 constexpr uint8_t SPED_SENSOR = A0;
 
 constexpr float WHEEL_DIAMETER_METERS = 0.3f;  //TODO: measure actual wheel
-constexpr int THRESHOLD_HIGH = 600; //TODO: tune
-constexpr int THRESHOLD_LOW  = 400;
+constexpr uint16_t THRESHOLD_HIGH = 600; //TODO: tune
+constexpr uint16_t THRESHOLD_LOW  = 400;
 
 constexpr float POSITIVE_RESISTOR = 1500.0f;
 constexpr float NEGATIVE_RESISTOR = 1000.0f;
@@ -176,6 +177,7 @@ void loop() {
     unsigned long now = millis();
     if (now - lastForwardSend >= FORWARD_PACKET_INTERVAL) {
         lastForwardSend = now;
+
         ForwardPacket packet = {getSpeed(), encodeNumberToFixed(getVoltage())};
         sendPacket(Serial, 1, reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
     }
