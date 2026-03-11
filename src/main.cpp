@@ -149,7 +149,7 @@ void updateIndicators() {
 }
 
 void setup() {
-    Serial.begin(115200);
+    Serial.begin(9600);
     for (const uint8_t pin: pins) {
         pinMode(pin, OUTPUT);
         digitalWrite(pin, LOW);
