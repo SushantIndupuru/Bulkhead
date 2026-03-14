@@ -1,4 +1,3 @@
-
 #include <Arduino.h>
 #include <SerialPacketFunctions.h>
 #include <Structs.h>
@@ -7,143 +6,116 @@
 constexpr uint8_t LEFT_INDICATOR = 9;
 constexpr uint8_t RIGHT_INDICATOR = 10;
 constexpr uint8_t HEADLIGHT = 8;
-constexpr uint8_t RUNNING = 11;
+constexpr uint8_t REAR_LEFT_RUN_LIGHT = 11;
+constexpr uint8_t REAR_RIGHT_RUN_LIGHT = 5;
 constexpr uint8_t REAR_LEFT_BRAKE_LIGHT = 6;
 constexpr uint8_t REAR_RIGHT_BRAKE_LIGHT = 7;
-constexpr uint8_t SPED_SENSOR = A0;
+constexpr uint8_t VOLTAGE_SENSOR = A0;
+constexpr uint8_t TACH_LED = 3;
+constexpr uint8_t TACH_IR = 2;
 
-constexpr float WHEEL_DIAMETER_METERS = 0.3f;  //TODO: measure actual wheel
-constexpr uint16_t THRESHOLD_HIGH = 600; //TODO: tune
-constexpr uint16_t THRESHOLD_LOW  = 400;
-
+constexpr float WHEEL_DIAMETER_METERS = 0.3f;
+constexpr uint16_t THRESHOLD_HIGH = 600;
+constexpr uint16_t THRESHOLD_LOW = 400;
 constexpr float POSITIVE_RESISTOR = 1500.0f;
 constexpr float NEGATIVE_RESISTOR = 1000.0f;
-
 constexpr unsigned long INDICATOR_INTERVAL = 350;
-constexpr unsigned long FORWARD_PACKET_INTERVAL = 50; // ~20Hz
+constexpr unsigned long FORWARD_PACKET_INTERVAL = 50;
 
 constexpr uint8_t pins[] = {
-    LEFT_INDICATOR,
-    RIGHT_INDICATOR,
-    HEADLIGHT,
-    RUNNING,
-    REAR_LEFT_BRAKE_LIGHT,
-    REAR_RIGHT_BRAKE_LIGHT
+    LEFT_INDICATOR, RIGHT_INDICATOR, HEADLIGHT,
+    REAR_LEFT_RUN_LIGHT, REAR_LEFT_BRAKE_LIGHT, REAR_RIGHT_RUN_LIGHT, REAR_RIGHT_BRAKE_LIGHT
 };
 
-bool sensorLastState = false;
-unsigned long lastRiseTime = 0;
-unsigned long pulseInterval = 0;
-
-IndicatorState currentIndicatorState = INDICATOR_OFF;
-
-bool indicatorBlinkState = false;
-unsigned long lastIndicatorToggle = 0;
-
-bool brakeRequested = false;
-
-ReversePacket latestReversePacket{};
-
-void handlePacket(uint8_t type, uint8_t *data, uint8_t len) {
-    if (type == 2 && len == sizeof(ReversePacket)) {
-        memcpy(&latestReversePacket, data, sizeof(ReversePacket));
-    }
+// Single source of truth for inverted LED logic
+inline void setLED(uint8_t pin, bool on) {
+    digitalWrite(pin, on ? LOW : HIGH);
 }
 
-void updateSpeedSensor() {
-    const int val = analogRead(SPED_SENSOR);
-    bool currentState = sensorLastState;
+void setRearLED(uint8_t brakePin, uint8_t runPin, bool brake, bool run) {
+    setLED(brakePin, brake);
+    setLED(runPin, brake ? false : run); // suppress dim when bright is on
+}
 
-    if (!sensorLastState && val > THRESHOLD_HIGH) currentState = true;
-    else if (sensorLastState && val < THRESHOLD_LOW) currentState = false;
+volatile unsigned long lastRiseTime = 0;
+volatile unsigned long pulseInterval = 0;
 
-    if (currentState && !sensorLastState) {
-        unsigned long now = micros();
-        if (lastRiseTime > 0) pulseInterval = now - lastRiseTime;
-        lastRiseTime = now;
-    }
-    sensorLastState = currentState;
+IndicatorState currentIndicatorState = INDICATOR_OFF;
+bool indicatorBlinkState = false;
+unsigned long lastIndicatorToggle = 0;
+bool brakeRequested = false;
+bool runningRequested = false;
+ReversePacket latestReversePacket{};
+
+void tachRise() {
+    unsigned long now = micros();
+    static unsigned long prev = 0;
+    if (prev > 0) pulseInterval = now - prev;
+    prev = now;
+    lastRiseTime = now;
+}
+
+void handlePacket(uint8_t type, uint8_t *data, uint8_t len) {
+    if (type == 2 && len == sizeof(ReversePacket))
+        memcpy(&latestReversePacket, data, sizeof(ReversePacket));
 }
 
 uint8_t getSpeed() {
-    if (pulseInterval == 0) return 0;
-    if (micros() - lastRiseTime > 2000000UL) return 0;
+    unsigned long interval, last;
+    noInterrupts();
+    interval = pulseInterval;
+    last = lastRiseTime;
+    interrupts();
 
-    const float rpm = (60.0f * 1000000.0f) / static_cast<float>(pulseInterval);
-    const float ms  = (rpm / 60.0f) * (PI * WHEEL_DIAMETER_METERS);
-    const auto mph = static_cast<uint8_t>(ms * 2.237f);
-    return min(mph, (uint8_t)255);
-}
+    if (interval == 0 || micros() - last > 2000000UL) return 0;
 
-float readVCC() {
-    //measure actual supply voltage using internal 1.1V reference
-    ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
-    delay(2);
-    ADCSRA |= _BV(ADSC);
-    while (bit_is_set(ADCSRA, ADSC)) {}
-    long result = ADCW;
-    return (1.1f * 1023.0f * 1000.0f) / static_cast<float>(result) / 1000.0f;
+    const float rpm = (60.0f * 1000000.0f) / static_cast<float>(interval);
+    const float ms = (rpm / 60.0f) * (PI * WHEEL_DIAMETER_METERS);
+    return min(static_cast<uint8_t>(ms * 2.237f), (uint8_t)255);
 }
 
 float getVoltage() {
-    const float vcc = readVCC();
-    const int raw = analogRead(SPED_SENSOR);
-    const float voltageAtPin = raw * (vcc / 1023);
+    const float vcc = 4.98f;
+    const float voltageAtPin = analogRead(VOLTAGE_SENSOR) * (vcc / 1023.0f);
     return voltageAtPin * ((POSITIVE_RESISTOR + NEGATIVE_RESISTOR) / NEGATIVE_RESISTOR);
 }
 
-void setHeadLights(bool state) {
-    digitalWrite(HEADLIGHT, state);
-}
-
-void setRunningLights(bool state) {
-    digitalWrite(RUNNING, state);
-}
-
-void setBrakeLights(bool state) {
-    brakeRequested = state;
-}
-
-void setIndicatorLights(IndicatorState state) {
-    currentIndicatorState = state;
-}
-
-
 void updateIndicators() {
     unsigned long now = millis();
-
     if (now - lastIndicatorToggle >= INDICATOR_INTERVAL) {
         lastIndicatorToggle = now;
         indicatorBlinkState = !indicatorBlinkState;
     }
 
+    const bool blink = indicatorBlinkState;
+
     switch (currentIndicatorState) {
         case INDICATOR_OFF:
-            digitalWrite(LEFT_INDICATOR, LOW);
-            digitalWrite(RIGHT_INDICATOR, LOW);
-            digitalWrite(REAR_LEFT_BRAKE_LIGHT, brakeRequested);
-            digitalWrite(REAR_RIGHT_BRAKE_LIGHT, brakeRequested);
+            setLED(LEFT_INDICATOR, false);
+            setLED(RIGHT_INDICATOR, false);
+            setRearLED(REAR_LEFT_BRAKE_LIGHT, REAR_LEFT_RUN_LIGHT, brakeRequested, runningRequested);
+            setRearLED(REAR_RIGHT_BRAKE_LIGHT, REAR_RIGHT_RUN_LIGHT, brakeRequested, runningRequested);
             break;
 
         case LEFT:
-            digitalWrite(LEFT_INDICATOR, indicatorBlinkState);
-            digitalWrite(RIGHT_INDICATOR, LOW);
-            digitalWrite(REAR_LEFT_BRAKE_LIGHT, indicatorBlinkState);
-            digitalWrite(REAR_RIGHT_BRAKE_LIGHT, brakeRequested);
+            setLED(LEFT_INDICATOR, blink);
+            setLED(RIGHT_INDICATOR, false);
+            setRearLED(REAR_LEFT_BRAKE_LIGHT, REAR_LEFT_RUN_LIGHT, blink, runningRequested);
+            setRearLED(REAR_RIGHT_BRAKE_LIGHT, REAR_RIGHT_RUN_LIGHT, brakeRequested, runningRequested);
             break;
 
         case RIGHT:
-            digitalWrite(LEFT_INDICATOR, LOW);
-            digitalWrite(RIGHT_INDICATOR, indicatorBlinkState);
-            digitalWrite(REAR_LEFT_BRAKE_LIGHT, brakeRequested);
-            digitalWrite(REAR_RIGHT_BRAKE_LIGHT, indicatorBlinkState);
+            setLED(LEFT_INDICATOR, false);
+            setLED(RIGHT_INDICATOR, blink);
+            setRearLED(REAR_LEFT_BRAKE_LIGHT, REAR_LEFT_RUN_LIGHT, brakeRequested, runningRequested);
+            setRearLED(REAR_RIGHT_BRAKE_LIGHT, REAR_RIGHT_RUN_LIGHT, blink, runningRequested);
             break;
 
         case HAZARDS:
-            digitalWrite(LEFT_INDICATOR, indicatorBlinkState);
-            digitalWrite(RIGHT_INDICATOR, indicatorBlinkState);
-            digitalWrite(REAR_LEFT_BRAKE_LIGHT, indicatorBlinkState);
-            digitalWrite(REAR_RIGHT_BRAKE_LIGHT, indicatorBlinkState);
+            setLED(LEFT_INDICATOR, blink);
+            setLED(RIGHT_INDICATOR, blink);
+            setRearLED(REAR_LEFT_BRAKE_LIGHT, REAR_LEFT_RUN_LIGHT, blink, runningRequested);
+            setRearLED(REAR_RIGHT_BRAKE_LIGHT, REAR_RIGHT_RUN_LIGHT, blink, runningRequested);
             break;
     }
 }
@@ -152,13 +124,18 @@ void setup() {
     Serial.begin(9600);
     for (const uint8_t pin: pins) {
         pinMode(pin, OUTPUT);
-        digitalWrite(pin, LOW);
+        setLED(pin, false);
     }
-    // Test LEDs sequentially on boot
+    pinMode(TACH_LED, OUTPUT);
+    setLED(TACH_LED, true);
+    pinMode(TACH_IR, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(TACH_IR), tachRise, FALLING);
+
+    // Sequentially test LEDs on boot
     for (const uint8_t pin: pins) {
-        digitalWrite(pin, HIGH);
+        setLED(pin, true);
         delay(300);
-        digitalWrite(pin, LOW);
+        setLED(pin, false);
         delay(150);
     }
 }
@@ -166,18 +143,16 @@ void setup() {
 void loop() {
     updatePacket(Serial, handlePacket);
 
-    setHeadLights(latestReversePacket.headlight);
-    setRunningLights(latestReversePacket.running);
-    setBrakeLights(latestReversePacket.brake);
-    setIndicatorLights(latestReversePacket.indicatorState);
+    setLED(HEADLIGHT, latestReversePacket.headlight);
+    brakeRequested = latestReversePacket.brake;
+    runningRequested = latestReversePacket.running;
+    currentIndicatorState = latestReversePacket.indicatorState;
     updateIndicators();
-    updateSpeedSensor();
 
     static unsigned long lastForwardSend = 0;
     unsigned long now = millis();
     if (now - lastForwardSend >= FORWARD_PACKET_INTERVAL) {
         lastForwardSend = now;
-
         ForwardPacket packet = {getSpeed(), encodeNumberToFixed(getVoltage())};
         sendPacket(Serial, 1, reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
     }
