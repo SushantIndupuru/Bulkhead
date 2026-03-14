@@ -11,8 +11,7 @@ constexpr uint8_t REAR_RIGHT_RUN_LIGHT = 5;
 constexpr uint8_t REAR_LEFT_BRAKE_LIGHT = 6;
 constexpr uint8_t REAR_RIGHT_BRAKE_LIGHT = 7;
 constexpr uint8_t VOLTAGE_SENSOR = A0;
-constexpr uint8_t TACH_LED = 3;
-constexpr uint8_t TACH_IR = 2;
+constexpr uint8_t ENCODER_A = 2;
 
 constexpr float WHEEL_DIAMETER_METERS = 0.3f;
 constexpr uint16_t THRESHOLD_HIGH = 600;
@@ -22,19 +21,19 @@ constexpr float NEGATIVE_RESISTOR = 1000.0f;
 constexpr unsigned long INDICATOR_INTERVAL = 350;
 constexpr unsigned long FORWARD_PACKET_INTERVAL = 50;
 
+constexpr uint16_t ENCODER_CPR = 360;
 constexpr uint8_t pins[] = {
     LEFT_INDICATOR, RIGHT_INDICATOR, HEADLIGHT,
     REAR_LEFT_RUN_LIGHT, REAR_LEFT_BRAKE_LIGHT, REAR_RIGHT_RUN_LIGHT, REAR_RIGHT_BRAKE_LIGHT
 };
 
-// Single source of truth for inverted LED logic
 inline void setLED(uint8_t pin, bool on) {
     digitalWrite(pin, on ? LOW : HIGH);
 }
 
 void setRearLED(uint8_t brakePin, uint8_t runPin, bool brake, bool run) {
     setLED(brakePin, brake);
-    setLED(runPin, brake ? false : run); // suppress dim when bright is on
+    setLED(runPin, brake ? false : run);
 }
 
 volatile unsigned long lastRiseTime = 0;
@@ -69,15 +68,29 @@ uint8_t getSpeed() {
 
     if (interval == 0 || micros() - last > 2000000UL) return 0;
 
-    const float rpm = (60.0f * 1000000.0f) / static_cast<float>(interval);
-    const float ms = (rpm / 60.0f) * (PI * WHEEL_DIAMETER_METERS);
+    const float pulseFreq = 1000000.0f / static_cast<float>(interval); //pulses/sec
+    const float wheelRPS = pulseFreq / ENCODER_CPR;
+    const float ms = wheelRPS * (PI * WHEEL_DIAMETER_METERS);
+
     return min(static_cast<uint8_t>(ms * 2.237f), (uint8_t)255);
 }
 
 float getVoltage() {
     const float vcc = 4.98f;
-    const float voltageAtPin = analogRead(VOLTAGE_SENSOR) * (vcc / 1023.0f);
-    return voltageAtPin * ((POSITIVE_RESISTOR + NEGATIVE_RESISTOR) / NEGATIVE_RESISTOR);
+    const float scale = ((POSITIVE_RESISTOR + NEGATIVE_RESISTOR) / NEGATIVE_RESISTOR);
+    static float filteredVoltage = 0.0f;
+
+    uint32_t sum = 0;
+    for (int i = 0; i < 8; i++) {
+        sum += analogRead(VOLTAGE_SENSOR);
+    }
+    float raw = (sum / 8.0f) * (vcc / 1023.0f);
+
+    float voltage = raw * scale;
+    const float alpha = 0.15f;
+    filteredVoltage = filteredVoltage + alpha * (voltage - filteredVoltage);
+
+    return filteredVoltage;
 }
 
 void updateIndicators() {
@@ -126,10 +139,8 @@ void setup() {
         pinMode(pin, OUTPUT);
         setLED(pin, false);
     }
-    pinMode(TACH_LED, OUTPUT);
-    setLED(TACH_LED, true);
-    pinMode(TACH_IR, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(TACH_IR), tachRise, FALLING);
+    pinMode(ENCODER_A, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(ENCODER_A), tachRise, RISING);
 
     // Sequentially test LEDs on boot
     for (const uint8_t pin: pins) {
