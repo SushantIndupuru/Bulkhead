@@ -16,8 +16,8 @@ constexpr uint8_t ENCODER_A = 2;
 constexpr float WHEEL_DIAMETER_METERS = 0.3f;
 constexpr uint16_t THRESHOLD_HIGH = 600;
 constexpr uint16_t THRESHOLD_LOW = 400;
-constexpr float POSITIVE_RESISTOR = 1500.0f;
-constexpr float NEGATIVE_RESISTOR = 1000.0f;
+constexpr float POSITIVE_RESISTOR = 17100.0f;
+constexpr float  NEGATIVE_RESISTOR = 10000.0f;
 constexpr unsigned long INDICATOR_INTERVAL = 350;
 constexpr unsigned long FORWARD_PACKET_INTERVAL = 50;
 
@@ -76,18 +76,18 @@ uint8_t getSpeed() {
 }
 
 float getVoltage() {
-    const float vcc = 4.98f;
-    const float scale = ((POSITIVE_RESISTOR + NEGATIVE_RESISTOR) / NEGATIVE_RESISTOR);
+    constexpr float vcc = 4.98f;
+    constexpr float scale = ((POSITIVE_RESISTOR + NEGATIVE_RESISTOR) / NEGATIVE_RESISTOR);
     static float filteredVoltage = 0.0f;
 
     uint32_t sum = 0;
     for (int i = 0; i < 8; i++) {
         sum += analogRead(VOLTAGE_SENSOR);
     }
-    float raw = (sum / 8.0f) * (vcc / 1023.0f);
+    float raw = static_cast<float>(sum) / 8.0f * (vcc / 1024.0f);
 
     float voltage = raw * scale;
-    const float alpha = 0.15f;
+    constexpr float alpha = 0.15f;
     filteredVoltage = filteredVoltage + alpha * (voltage - filteredVoltage);
 
     return filteredVoltage;
