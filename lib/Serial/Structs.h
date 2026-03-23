@@ -19,10 +19,10 @@ struct __attribute__((packed)) ForwardPacket {
 // packet type 2 – from steeringwheel to bulkhead
 struct __attribute__((packed)) ReversePacket {
     IndicatorState indicatorState;
-    uint8_t headlight;
-    uint8_t brake;
-    uint8_t running;
-    uint8_t starter;
+    uint8_t headlight : 1;
+    uint8_t brake : 1;
+    uint8_t running : 1;
+    uint8_t starter : 1;
 };
 
 

@@ -55,7 +55,7 @@ void tachRise() {
     lastRiseTime = now;
 }
 
-void handlePacket(uint8_t type, uint8_t *data, uint8_t len) {
+void handlePacket(uint8_t type, const uint8_t *data, uint8_t len) {
     if (type == 2 && len == sizeof(ReversePacket))
         memcpy(&latestReversePacket, data, sizeof(ReversePacket));
 }

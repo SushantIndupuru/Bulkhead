@@ -6,8 +6,7 @@ constexpr size_t HISTORY_SIZE = 128;
 static uint8_t history[HISTORY_SIZE];
 static size_t historyLen = 0;
 
-void updatePacket(HardwareSerial &serial, void (*handler)(uint8_t type, uint8_t *data, uint8_t len)) {
-    while (serial.available() && historyLen < HISTORY_SIZE) {
+void updatePacket(HardwareSerial &serial, void (*handler)(uint8_t type, const uint8_t *data, uint8_t len)) {    while (serial.available() && historyLen < HISTORY_SIZE) {
         history[historyLen++] = serial.read();
     }
 
