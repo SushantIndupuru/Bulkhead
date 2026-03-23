@@ -28,11 +28,11 @@ constexpr uint8_t pins[] = {
     REAR_LEFT_RUN_LIGHT, REAR_LEFT_BRAKE_LIGHT, REAR_RIGHT_RUN_LIGHT, REAR_RIGHT_BRAKE_LIGHT
 };
 
-inline void digitalWriteRelay(uint8_t pin, bool on) {
+inline void digitalWriteRelay(const uint8_t pin, const bool on) {
     digitalWrite(pin, on ? LOW : HIGH);
 }
 
-void setRearLED(uint8_t brakePin, uint8_t runPin, bool brake, bool run) {
+void setRearLED(const uint8_t brakePin, const uint8_t runPin, const bool brake, const bool run) {
     digitalWriteRelay(brakePin, brake);
     digitalWriteRelay(runPin, brake ? false : run);
 }
@@ -47,15 +47,15 @@ bool brakeRequested = false;
 bool runningRequested = false;
 ReversePacket latestReversePacket{};
 
-void tachRise() {
-    unsigned long now = micros();
+void encoderRise() {
+    const unsigned long now = micros();
     static unsigned long prev = 0;
     if (prev > 0) pulseInterval = now - prev;
     prev = now;
     lastRiseTime = now;
 }
 
-void handlePacket(uint8_t type, const uint8_t *data, uint8_t len) {
+void handlePacket(const uint8_t type, const uint8_t *data, const uint8_t len) {
     if (type == 2 && len == sizeof(ReversePacket))
         memcpy(&latestReversePacket, data, sizeof(ReversePacket));
 }
@@ -78,16 +78,16 @@ uint8_t getSpeed() {
 
 float getVoltage() {
     constexpr float vcc = 4.98f;
-    constexpr float scale = ((POSITIVE_RESISTOR + NEGATIVE_RESISTOR) / NEGATIVE_RESISTOR);
+    constexpr float scale = (POSITIVE_RESISTOR + NEGATIVE_RESISTOR) / NEGATIVE_RESISTOR;
     static float filteredVoltage = 0.0f;
 
     uint32_t sum = 0;
     for (int i = 0; i < 8; i++) {
         sum += analogRead(VOLTAGE_SENSOR);
     }
-    float raw = static_cast<float>(sum) / 8.0f * (vcc / 1024.0f);
+    const float raw = static_cast<float>(sum) / 8.0f * (vcc / 1024.0f);
 
-    float voltage = raw * scale;
+    const float voltage = raw * scale;
     constexpr float alpha = 0.15f;
     filteredVoltage = filteredVoltage + alpha * (voltage - filteredVoltage);
 
@@ -95,7 +95,7 @@ float getVoltage() {
 }
 
 void updateIndicators() {
-    unsigned long now = millis();
+    const unsigned long now = millis();
     if (now - lastIndicatorToggle >= INDICATOR_INTERVAL) {
         lastIndicatorToggle = now;
         indicatorBlinkState = !indicatorBlinkState;
@@ -143,7 +143,7 @@ void setup() {
     pinMode(STARTER, OUTPUT);
     digitalWriteRelay(STARTER, false);
     pinMode(ENCODER_A, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(ENCODER_A), tachRise, RISING);
+    attachInterrupt(digitalPinToInterrupt(ENCODER_A), encoderRise, RISING);
 
     // Sequentially test LEDs on boot
     for (const uint8_t pin: pins) {
@@ -170,7 +170,7 @@ void loop() {
     }
 
     static unsigned long lastForwardSend = 0;
-    unsigned long now = millis();
+    const unsigned long now = millis();
     if (now - lastForwardSend >= FORWARD_PACKET_INTERVAL) {
         lastForwardSend = now;
         ForwardPacket packet = {getSpeed(), encodeNumberToFixed(getVoltage())};
