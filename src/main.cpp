@@ -163,11 +163,7 @@ void loop() {
     currentIndicatorState = latestReversePacket.indicatorState;
     updateIndicators();
 
-    if (latestReversePacket.starter) {
-        digitalWriteRelay(STARTER, HIGH);
-    } else {
-        digitalWriteRelay(STARTER, LOW);
-    }
+    digitalWriteRelay(STARTER, latestReversePacket.starter);
 
     static unsigned long lastForwardSend = 0;
     const unsigned long now = millis();
