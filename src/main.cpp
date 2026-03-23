@@ -3,6 +3,15 @@
 #include <Structs.h>
 #include <FixedPoint.h>
 
+//constants
+constexpr float WHEEL_DIAMETER_METERS = 0.3f;
+constexpr float POSITIVE_RESISTOR = 17100.0f;
+constexpr float NEGATIVE_RESISTOR = 10000.0f;
+constexpr unsigned long INDICATOR_INTERVAL = 350;
+constexpr unsigned long FORWARD_PACKET_INTERVAL = 50;
+constexpr uint16_t ENCODER_CPR = 360;
+
+//hardware
 constexpr uint8_t LEFT_INDICATOR = 9;
 constexpr uint8_t RIGHT_INDICATOR = 10;
 constexpr uint8_t HEADLIGHT = 8;
@@ -13,20 +22,22 @@ constexpr uint8_t REAR_RIGHT_BRAKE_LIGHT = 7;
 constexpr uint8_t STARTER = 0;
 constexpr uint8_t VOLTAGE_SENSOR = A0;
 constexpr uint8_t ENCODER_A = 2;
-
-constexpr float WHEEL_DIAMETER_METERS = 0.3f;
-constexpr uint16_t THRESHOLD_HIGH = 600;
-constexpr uint16_t THRESHOLD_LOW = 400;
-constexpr float POSITIVE_RESISTOR = 17100.0f;
-constexpr float NEGATIVE_RESISTOR = 10000.0f;
-constexpr unsigned long INDICATOR_INTERVAL = 350;
-constexpr unsigned long FORWARD_PACKET_INTERVAL = 50;
-
-constexpr uint16_t ENCODER_CPR = 360;
 constexpr uint8_t pins[] = {
     LEFT_INDICATOR, RIGHT_INDICATOR, HEADLIGHT,
     REAR_LEFT_RUN_LIGHT, REAR_LEFT_BRAKE_LIGHT, REAR_RIGHT_RUN_LIGHT, REAR_RIGHT_BRAKE_LIGHT
 };
+
+//lighting states
+IndicatorState currentIndicatorState = INDICATOR_OFF;
+bool brakeRequested = false;
+bool runningRequested = false;
+
+//speed variables
+volatile unsigned long lastRiseTime = 0;
+volatile unsigned long pulseInterval = 0;
+
+//packet
+ReversePacket latestReversePacket{};
 
 inline void digitalWriteRelay(const uint8_t pin, const bool on) {
     digitalWrite(pin, on ? LOW : HIGH);
@@ -36,16 +47,6 @@ void setRearLED(const uint8_t brakePin, const uint8_t runPin, const bool brake, 
     digitalWriteRelay(brakePin, brake);
     digitalWriteRelay(runPin, brake ? false : run);
 }
-
-volatile unsigned long lastRiseTime = 0;
-volatile unsigned long pulseInterval = 0;
-
-IndicatorState currentIndicatorState = INDICATOR_OFF;
-bool indicatorBlinkState = false;
-unsigned long lastIndicatorToggle = 0;
-bool brakeRequested = false;
-bool runningRequested = false;
-ReversePacket latestReversePacket{};
 
 void encoderRise() {
     const unsigned long now = micros();
@@ -95,6 +96,9 @@ float getVoltage() {
 }
 
 void updateIndicators() {
+    static bool indicatorBlinkState = false;
+    static unsigned long lastIndicatorToggle = 0;
+
     const unsigned long now = millis();
     if (now - lastIndicatorToggle >= INDICATOR_INTERVAL) {
         lastIndicatorToggle = now;
