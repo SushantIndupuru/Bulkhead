@@ -12,6 +12,8 @@ constexpr unsigned long FORWARD_PACKET_INTERVAL = 50;
 constexpr uint16_t ENCODER_CPR = 360;
 
 //hardware
+constexpr uint8_t ENCODER_A = 2;
+constexpr uint8_t ENCODER_B = 3;
 constexpr uint8_t REAR_LEFT_BRAKE_LIGHT = 4;
 constexpr uint8_t REAR_LEFT_RUN_LIGHT = 5;
 constexpr uint8_t REAR_RIGHT_BRAKE_LIGHT = 6;
@@ -21,7 +23,6 @@ constexpr uint8_t LEFT_INDICATOR = 9;
 constexpr uint8_t RIGHT_INDICATOR = 10;
 constexpr uint8_t STARTER = 11;
 constexpr uint8_t VOLTAGE_SENSOR = A0;
-constexpr uint8_t ENCODER_A = 2;
 constexpr uint8_t pins[] = {
     LEFT_INDICATOR, RIGHT_INDICATOR, HEADLIGHT,
     REAR_LEFT_RUN_LIGHT, REAR_LEFT_BRAKE_LIGHT, REAR_RIGHT_RUN_LIGHT, REAR_RIGHT_BRAKE_LIGHT
