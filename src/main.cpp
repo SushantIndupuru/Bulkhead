@@ -10,6 +10,7 @@ constexpr uint8_t REAR_LEFT_RUN_LIGHT = 11;
 constexpr uint8_t REAR_RIGHT_RUN_LIGHT = 5;
 constexpr uint8_t REAR_LEFT_BRAKE_LIGHT = 6;
 constexpr uint8_t REAR_RIGHT_BRAKE_LIGHT = 7;
+constexpr uint8_t STARTER = 0;
 constexpr uint8_t VOLTAGE_SENSOR = A0;
 constexpr uint8_t ENCODER_A = 2;
 
@@ -17,7 +18,7 @@ constexpr float WHEEL_DIAMETER_METERS = 0.3f;
 constexpr uint16_t THRESHOLD_HIGH = 600;
 constexpr uint16_t THRESHOLD_LOW = 400;
 constexpr float POSITIVE_RESISTOR = 17100.0f;
-constexpr float  NEGATIVE_RESISTOR = 10000.0f;
+constexpr float NEGATIVE_RESISTOR = 10000.0f;
 constexpr unsigned long INDICATOR_INTERVAL = 350;
 constexpr unsigned long FORWARD_PACKET_INTERVAL = 50;
 
@@ -27,13 +28,13 @@ constexpr uint8_t pins[] = {
     REAR_LEFT_RUN_LIGHT, REAR_LEFT_BRAKE_LIGHT, REAR_RIGHT_RUN_LIGHT, REAR_RIGHT_BRAKE_LIGHT
 };
 
-inline void setLED(uint8_t pin, bool on) {
+inline void digitalWriteRelay(uint8_t pin, bool on) {
     digitalWrite(pin, on ? LOW : HIGH);
 }
 
 void setRearLED(uint8_t brakePin, uint8_t runPin, bool brake, bool run) {
-    setLED(brakePin, brake);
-    setLED(runPin, brake ? false : run);
+    digitalWriteRelay(brakePin, brake);
+    digitalWriteRelay(runPin, brake ? false : run);
 }
 
 volatile unsigned long lastRiseTime = 0;
@@ -104,29 +105,29 @@ void updateIndicators() {
 
     switch (currentIndicatorState) {
         case INDICATOR_OFF:
-            setLED(LEFT_INDICATOR, false);
-            setLED(RIGHT_INDICATOR, false);
+            digitalWriteRelay(LEFT_INDICATOR, false);
+            digitalWriteRelay(RIGHT_INDICATOR, false);
             setRearLED(REAR_LEFT_BRAKE_LIGHT, REAR_LEFT_RUN_LIGHT, brakeRequested, runningRequested);
             setRearLED(REAR_RIGHT_BRAKE_LIGHT, REAR_RIGHT_RUN_LIGHT, brakeRequested, runningRequested);
             break;
 
         case LEFT:
-            setLED(LEFT_INDICATOR, blink);
-            setLED(RIGHT_INDICATOR, false);
+            digitalWriteRelay(LEFT_INDICATOR, blink);
+            digitalWriteRelay(RIGHT_INDICATOR, false);
             setRearLED(REAR_LEFT_BRAKE_LIGHT, REAR_LEFT_RUN_LIGHT, blink, runningRequested);
             setRearLED(REAR_RIGHT_BRAKE_LIGHT, REAR_RIGHT_RUN_LIGHT, brakeRequested, runningRequested);
             break;
 
         case RIGHT:
-            setLED(LEFT_INDICATOR, false);
-            setLED(RIGHT_INDICATOR, blink);
+            digitalWriteRelay(LEFT_INDICATOR, false);
+            digitalWriteRelay(RIGHT_INDICATOR, blink);
             setRearLED(REAR_LEFT_BRAKE_LIGHT, REAR_LEFT_RUN_LIGHT, brakeRequested, runningRequested);
             setRearLED(REAR_RIGHT_BRAKE_LIGHT, REAR_RIGHT_RUN_LIGHT, blink, runningRequested);
             break;
 
         case HAZARDS:
-            setLED(LEFT_INDICATOR, blink);
-            setLED(RIGHT_INDICATOR, blink);
+            digitalWriteRelay(LEFT_INDICATOR, blink);
+            digitalWriteRelay(RIGHT_INDICATOR, blink);
             setRearLED(REAR_LEFT_BRAKE_LIGHT, REAR_LEFT_RUN_LIGHT, blink, runningRequested);
             setRearLED(REAR_RIGHT_BRAKE_LIGHT, REAR_RIGHT_RUN_LIGHT, blink, runningRequested);
             break;
@@ -137,16 +138,18 @@ void setup() {
     Serial.begin(9600);
     for (const uint8_t pin: pins) {
         pinMode(pin, OUTPUT);
-        setLED(pin, false);
+        digitalWriteRelay(pin, false);
     }
+    pinMode(STARTER, OUTPUT);
+    digitalWriteRelay(STARTER, false);
     pinMode(ENCODER_A, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(ENCODER_A), tachRise, RISING);
 
     // Sequentially test LEDs on boot
     for (const uint8_t pin: pins) {
-        setLED(pin, true);
+        digitalWriteRelay(pin, true);
         delay(300);
-        setLED(pin, false);
+        digitalWriteRelay(pin, false);
         delay(150);
     }
 }
@@ -154,11 +157,17 @@ void setup() {
 void loop() {
     updatePacket(Serial, handlePacket);
 
-    setLED(HEADLIGHT, latestReversePacket.headlight);
+    digitalWriteRelay(HEADLIGHT, latestReversePacket.headlight);
     brakeRequested = latestReversePacket.brake;
     runningRequested = latestReversePacket.running;
     currentIndicatorState = latestReversePacket.indicatorState;
     updateIndicators();
+
+    if (latestReversePacket.starter) {
+        digitalWriteRelay(STARTER, HIGH);
+    } else {
+        digitalWriteRelay(STARTER, LOW);
+    }
 
     static unsigned long lastForwardSend = 0;
     unsigned long now = millis();

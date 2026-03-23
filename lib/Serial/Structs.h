@@ -22,6 +22,7 @@ struct __attribute__((packed)) ReversePacket {
     uint8_t headlight;
     uint8_t brake;
     uint8_t running;
+    uint8_t starter;
 };
 
 
