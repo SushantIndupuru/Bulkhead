@@ -5,8 +5,8 @@
 
 //constants
 constexpr float WHEEL_DIAMETER_METERS = 0.3f;
-constexpr float POSITIVE_RESISTOR = 17100.0f;
-constexpr float NEGATIVE_RESISTOR = 10000.0f;
+constexpr float POSITIVE_RESISTOR = 9970.0f+5070.0f+1970.0f;
+constexpr float NEGATIVE_RESISTOR = 9950.0f;
 constexpr unsigned long INDICATOR_INTERVAL = 350;
 constexpr unsigned long FORWARD_PACKET_INTERVAL = 50;
 constexpr uint16_t ENCODER_CPR = 360;
@@ -24,8 +24,8 @@ constexpr uint8_t RIGHT_INDICATOR = 10;
 constexpr uint8_t STARTER = 11;
 constexpr uint8_t VOLTAGE_SENSOR = A0;
 constexpr uint8_t pins[] = {
-    LEFT_INDICATOR, RIGHT_INDICATOR, HEADLIGHT,
-    REAR_LEFT_RUN_LIGHT, REAR_LEFT_BRAKE_LIGHT, REAR_RIGHT_RUN_LIGHT, REAR_RIGHT_BRAKE_LIGHT
+    REAR_LEFT_BRAKE_LIGHT, REAR_LEFT_RUN_LIGHT, REAR_RIGHT_BRAKE_LIGHT,
+    REAR_RIGHT_RUN_LIGHT, HEADLIGHT, LEFT_INDICATOR, RIGHT_INDICATOR
 };
 
 //lighting states
