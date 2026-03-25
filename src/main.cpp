@@ -5,7 +5,7 @@
 
 //constants
 constexpr float WHEEL_DIAMETER_METERS = 0.3f;
-constexpr float POSITIVE_RESISTOR = 9970.0f+5070.0f+1970.0f;
+constexpr float POSITIVE_RESISTOR = 9970.0f+9970.0f;
 constexpr float NEGATIVE_RESISTOR = 9950.0f;
 constexpr unsigned long INDICATOR_INTERVAL = 350;
 constexpr unsigned long FORWARD_PACKET_INTERVAL = 50;
