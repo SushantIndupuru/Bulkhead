@@ -1,7 +1,7 @@
-#include <Arduino.h>
 #include <SerialPacketFunctions.h>
-#include <Structs.h>
 #include <FixedPoint.h>
+#include <Arduino.h>
+#include <Structs.h>
 
 //constants
 constexpr float WHEEL_DIAMETER_METERS = 0.517f;

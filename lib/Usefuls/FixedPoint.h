@@ -1,6 +1,4 @@
-#ifndef FIXEDPOINT_H
-#define FIXEDPOINT_H
-
+#pragma once
 #include <Arduino.h>
 
 
@@ -9,6 +7,3 @@ uint16_t encodeNumberToFixed(float num);
 
 //decode a fixed-point integer back to float
 float decodeFixedToNumber(uint16_t encoded);
-
-
-#endif

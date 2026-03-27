@@ -1,6 +1,4 @@
-#ifndef SERIAL_STRUCTS_H
-#define SERIAL_STRUCTS_H
-
+#pragma once
 #include <Arduino.h>
 
 enum IndicatorState : uint8_t {
@@ -24,6 +22,3 @@ struct __attribute__((packed)) ReversePacket {
     uint8_t running: 1;
     uint8_t starter: 1;
 };
-
-
-#endif
