@@ -4,8 +4,11 @@
 #include <FixedPoint.h>
 
 //constants
-constexpr float WHEEL_DIAMETER_METERS = 0.3f;
-constexpr float POSITIVE_RESISTOR = 9970.0f+9970.0f;
+constexpr float WHEEL_DIAMETER_METERS = 0.517f;
+constexpr float ENCODER_PULLEY_DIAMETER = 0.01016f;
+constexpr float SHAFT_PULLEY_DIAMETER = 0.0254f;
+constexpr float BELT_RATIO = SHAFT_PULLEY_DIAMETER / ENCODER_PULLEY_DIAMETER;
+constexpr float POSITIVE_RESISTOR = 9970.0f + 9970.0f;
 constexpr float NEGATIVE_RESISTOR = 9950.0f;
 constexpr unsigned long INDICATOR_INTERVAL = 350;
 constexpr unsigned long FORWARD_PACKET_INTERVAL = 50;
@@ -72,7 +75,7 @@ uint8_t getSpeed() {
     if (interval == 0 || micros() - last > 2000000UL) return 0;
 
     const float pulseFreq = 1000000.0f / static_cast<float>(interval); //pulses/sec
-    const float wheelRPS = pulseFreq / ENCODER_CPR;
+    const float wheelRPS = pulseFreq / ENCODER_CPR * BELT_RATIO;
     const float ms = wheelRPS * (PI * WHEEL_DIAMETER_METERS);
 
     return min(static_cast<uint8_t>(ms * 2.237f), (uint8_t)255);
