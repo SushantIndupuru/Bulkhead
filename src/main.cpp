@@ -55,7 +55,12 @@ void setRearLED(const uint8_t brakePin, const uint8_t runPin, const bool brake, 
 void encoderRise() {
     const unsigned long now = micros();
     static unsigned long prev = 0;
-    if (prev > 0) pulseInterval = now - prev;
+    if (prev > 0) {
+        const unsigned long delta = now - prev;
+        if (delta > 700) {
+            pulseInterval = delta;
+        }
+    }
     prev = now;
     lastRiseTime = now;
 }
@@ -72,13 +77,22 @@ uint8_t getSpeed() {
     last = lastRiseTime;
     interrupts();
 
-    if (interval == 0 || micros() - last > 2000000UL) return 0;
+    static float filteredSpeed = 0.0f;
 
-    const float pulseFreq = 1000000.0f / static_cast<float>(interval); //pulses/sec
+    if (interval == 0 || micros() - last > 2000000UL) {
+        filteredSpeed = 0.0f;
+        return 0;
+    }
+
+    const float pulseFreq = 1000000.0f / static_cast<float>(interval);
     const float wheelRPS = pulseFreq / ENCODER_CPR * BELT_RATIO;
     const float ms = wheelRPS * (PI * WHEEL_DIAMETER_METERS);
+    const float mph = ms * 2.237f;
 
-    return min(static_cast<uint8_t>(ms * 2.237f), (uint8_t)255);
+    constexpr float alpha = 0.15f;
+    filteredSpeed = filteredSpeed + alpha * (mph - filteredSpeed);
+
+    return min(static_cast<uint8_t>(filteredSpeed), (uint8_t)255);
 }
 
 float getVoltage() {
