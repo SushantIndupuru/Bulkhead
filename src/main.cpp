@@ -8,8 +8,8 @@ constexpr float WHEEL_DIAMETER_METERS = 0.517f;
 constexpr float ENCODER_PULLEY_DIAMETER = 0.01016f;
 constexpr float SHAFT_PULLEY_DIAMETER = 0.0254f;
 constexpr float BELT_RATIO = SHAFT_PULLEY_DIAMETER / ENCODER_PULLEY_DIAMETER;
-constexpr float POSITIVE_RESISTOR = 9970.0f + 9970.0f;
-constexpr float NEGATIVE_RESISTOR = 9950.0f;
+constexpr float POSITIVE_RESISTOR = 20000.0f;
+constexpr float NEGATIVE_RESISTOR = 10000.0f;
 constexpr unsigned long INDICATOR_INTERVAL = 350;
 constexpr unsigned long FORWARD_PACKET_INTERVAL = 50;
 constexpr uint16_t ENCODER_CPR = 360;
@@ -192,7 +192,7 @@ void loop() {
     const unsigned long now = millis();
     if (now - lastForwardSend >= FORWARD_PACKET_INTERVAL) {
         lastForwardSend = now;
-        ForwardPacket packet = {getSpeed(), encodeNumberToFixed(getVoltage())};
+        ForwardPacket packet = {getSpeed(), encodeNumberToFixed( analogRead(VOLTAGE_SENSOR))};
         sendPacket(Serial, 1, reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
     }
 }
