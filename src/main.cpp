@@ -2,6 +2,8 @@
 #include <FixedPoint.h>
 #include <Arduino.h>
 #include <Structs.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 //constants
 constexpr float WHEEL_DIAMETER_METERS = 0.517f;
@@ -19,17 +21,22 @@ constexpr uint8_t ENCODER_A = 2;
 constexpr uint8_t ENCODER_B = 3;
 constexpr uint8_t REAR_LEFT_BRAKE_LIGHT = 4;
 constexpr uint8_t REAR_LEFT_RUN_LIGHT = 5;
-constexpr uint8_t REAR_RIGHT_BRAKE_LIGHT = 6;
+constexpr uint8_t REAR_RIGHT_BRAKE_LIGHT = 5;
 constexpr uint8_t REAR_RIGHT_RUN_LIGHT = 7;
-constexpr uint8_t HEADLIGHT = 8;
-constexpr uint8_t LEFT_INDICATOR = 9;
-constexpr uint8_t RIGHT_INDICATOR = 10;
+constexpr uint8_t HEADLIGHT = 6;
+constexpr uint8_t LEFT_INDICATOR = 7;
+constexpr uint8_t RIGHT_INDICATOR = 8;
+constexpr uint8_t IGNITION = 10;
 constexpr uint8_t STARTER = 11;
 constexpr uint8_t VOLTAGE_SENSOR = A0;
 constexpr uint8_t pins[] = {
-    REAR_LEFT_BRAKE_LIGHT, REAR_LEFT_RUN_LIGHT, REAR_RIGHT_BRAKE_LIGHT,
-    REAR_RIGHT_RUN_LIGHT, HEADLIGHT, LEFT_INDICATOR, RIGHT_INDICATOR
+    REAR_LEFT_BRAKE_LIGHT, REAR_RIGHT_BRAKE_LIGHT, HEADLIGHT, LEFT_INDICATOR, RIGHT_INDICATOR
 };
+OneWire oneWire(12);
+DallasTemperature sensors(&oneWire);
+float currentTemperatureC = 0.0f;
+unsigned long lastTempRequest = 0;
+bool waitingForConversion = false;
 
 //lighting states
 IndicatorState currentIndicatorState = INDICATOR_OFF;
@@ -49,7 +56,7 @@ inline void digitalWriteRelay(const uint8_t pin, const bool on) {
 
 void setRearLED(const uint8_t brakePin, const uint8_t runPin, const bool brake, const bool run) {
     digitalWriteRelay(brakePin, brake);
-    digitalWriteRelay(runPin, brake ? false : run);
+    //digitalWriteRelay(runPin, brake ? false : run);
 }
 
 void encoderRise() {
@@ -96,21 +103,36 @@ uint8_t getSpeed() {
 }
 
 float getVoltage() {
-    constexpr float vcc = 4.98f;
-    constexpr float scale = (POSITIVE_RESISTOR + NEGATIVE_RESISTOR) / NEGATIVE_RESISTOR;
+    constexpr float VCC = 5.04f;              // measured Arduino 5V rail
+    constexpr float CALIBRATION = 1.024710f;    // <-- YOUR calibration factor here
+
+    constexpr float scale =
+        (POSITIVE_RESISTOR + NEGATIVE_RESISTOR) / NEGATIVE_RESISTOR;
+
     static float filteredVoltage = 0.0f;
 
+    // --- oversampling (reduces noise) ---
     uint32_t sum = 0;
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 16; i++) {
         sum += analogRead(VOLTAGE_SENSOR);
     }
-    const float raw = static_cast<float>(sum) / 8.0f * (vcc / 1024.0f);
 
-    const float voltage = raw * scale;
+    // IMPORTANT: use 1023.0f (true ADC range scaling)
+    const float adc = static_cast<float>(sum) / 16.0f;
+
+    const float vA0 = adc * (VCC / 1023.0f);
+
+    // raw calculated input voltage
+    float voltage = vA0 * scale;
+
+    // apply calibration correction
+    voltage *= CALIBRATION;
+
+    // smoothing filter
     constexpr float alpha = 0.15f;
     filteredVoltage = filteredVoltage + alpha * (voltage - filteredVoltage);
 
-    return filteredVoltage;
+    return filteredVoltage+0.07;
 }
 
 void updateIndicators() {
@@ -158,12 +180,15 @@ void updateIndicators() {
 
 void setup() {
     Serial.begin(9600);
+    sensors.begin();
     for (const uint8_t pin: pins) {
         pinMode(pin, OUTPUT);
         digitalWriteRelay(pin, false);
     }
     pinMode(STARTER, OUTPUT);
     digitalWriteRelay(STARTER, false);
+    pinMode(IGNITION, OUTPUT);
+    digitalWriteRelay(IGNITION, false);
     pinMode(ENCODER_A, INPUT_PULLUP);
 
     attachInterrupt(digitalPinToInterrupt(ENCODER_A), encoderRise, RISING);
@@ -171,28 +196,49 @@ void setup() {
     // Sequentially test LEDs on boot
     for (const uint8_t pin: pins) {
         digitalWriteRelay(pin, true);
-        delay(300);
+        delay(100);
+    }
+    delay(300);
+    for (const uint8_t pin: pins) {
         digitalWriteRelay(pin, false);
-        delay(150);
     }
 }
 
-void loop() {
-    updatePacket(Serial, handlePacket);
 
+void loop() {
+    const unsigned long now = millis();
+
+    // --- Start temperature conversion every 1 second ---
+    if (!waitingForConversion && now - lastTempRequest >= 1000) {
+        lastTempRequest = now;
+        sensors.setWaitForConversion(false);   // non-blocking mode
+        sensors.requestTemperatures();         // start conversion
+        waitingForConversion = true;
+    }
+
+    // --- Check if conversion is done ---
+    if (waitingForConversion && sensors.isConversionComplete()) {
+        currentTemperatureC = sensors.getTempCByIndex(0);
+        waitingForConversion = false;
+    }
+
+    // --- Rest of your loop remains the same ---
+    updatePacket(Serial, handlePacket);
     digitalWriteRelay(HEADLIGHT, latestReversePacket.headlight);
     brakeRequested = latestReversePacket.brake;
     runningRequested = latestReversePacket.running;
     currentIndicatorState = latestReversePacket.indicatorState;
     updateIndicators();
-
     digitalWriteRelay(STARTER, latestReversePacket.starter);
-
+    digitalWriteRelay(IGNITION, latestReversePacket.ignition);
     static unsigned long lastForwardSend = 0;
-    const unsigned long now = millis();
     if (now - lastForwardSend >= FORWARD_PACKET_INTERVAL) {
         lastForwardSend = now;
-        ForwardPacket packet = {getSpeed(), encodeNumberToFixed( analogRead(VOLTAGE_SENSOR))};
+        ForwardPacket packet = {
+            getSpeed(),
+            encodeNumberToFixed(getVoltage()),
+            encodeNumberToFixed(currentTemperatureC)
+        };
         sendPacket(Serial, 1, reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
     }
 }

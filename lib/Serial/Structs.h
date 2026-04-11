@@ -12,6 +12,7 @@ enum IndicatorState : uint8_t {
 struct __attribute__((packed)) ForwardPacket {
     uint8_t speed; //mph
     uint16_t voltage; //volts stored at int, converted from 12.34 to 1234 to save space
+    uint16_t temperature; //deg c stored at int, converted from 12.34 to 1234 to save space
 };
 
 // packet type 2 – from steeringwheel to bulkhead
@@ -20,5 +21,6 @@ struct __attribute__((packed)) ReversePacket {
     uint8_t headlight: 1;
     uint8_t brake: 1;
     uint8_t running: 1;
+    uint8_t ignition: 1;
     uint8_t starter: 1;
 };
